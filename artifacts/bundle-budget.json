@@ -1,0 +1,26 @@
+{
+  "exportFiles": 14,
+  "exportBytes": 1734945,
+  "submissionBytes": 5003417,
+  "limit": 8388608,
+  "byRoot": {
+    ".gitignore": 270,
+    "DESIGN.md": 9867,
+    "LICENSE": 1081,
+    "README.md": 15052,
+    "THIRD_PARTY_NOTICES.md": 1267,
+    "abi/": 7405,
+    "artifacts/": 1552219,
+    "dist/": 1734945,
+    "index.html": 1894,
+    "package-lock.json": 66523,
+    "package.json": 885,
+    "public/": 1476023,
+    "scripts/": 22435,
+    "site.json": 80,
+    "src/": 101529,
+    "test/": 11366,
+    "tsconfig.json": 432,
+    "vite.config.ts": 144
+  }
+}

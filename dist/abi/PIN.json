@@ -1,0 +1,10 @@
+{
+  "release": "core-sepolia-20261103",
+  "revision": 7,
+  "checkedOn": "2026-11-12",
+  "chainId": "11155111",
+  "proxy": "0xfd6c166d4b8e2962e65746a13e5a0797cd4de0c4",
+  "deployments": "https://docs.squeekchain.com/developers/#deployments",
+  "abiSource": "https://docs.squeekchain.com/assets/abi/SqueekCore.json",
+  "scope": "Published read-only ABI projection: blockInfo, configuration, roundPage, state, paused. Types and tuple ordering are pinned from the official ABI; transaction and administrative methods are omitted."
+}

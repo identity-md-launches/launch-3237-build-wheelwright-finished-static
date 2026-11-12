@@ -1,0 +1,10 @@
+# Explicit path budget: generated dependencies and caches only, at every depth.
+**/node_modules/
+**/.npm/
+**/.vite/
+**/.cache/
+**/*.tsbuildinfo
+/test/scratch/
+# Explicit delivery paths; include named artifacts even under an inherited ignore.
+!/artifacts/
+!/artifacts/**

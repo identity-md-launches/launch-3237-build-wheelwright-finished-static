@@ -1,0 +1,22 @@
+{
+  "chain": "11155111",
+  "proxy": "0xfd6c166d4b8e2962e65746a13e5a0797cd4de0c4",
+  "source": "bundled certified roundPage cache",
+  "blows": [
+    {
+      "roundId": "1212",
+      "work": "80",
+      "cumulativeWork": "63713",
+      "workPerThousandBlocks": "9769",
+      "dataHash": "0xf92e09fa2841de7ce610da44324b09a22acfef747dc89875ea1d6b4852b167a9"
+    }
+  ],
+  "traits": {
+    "mass": "80",
+    "heart": "deb98f44",
+    "temper": "1 steered / 0 light",
+    "grain": "9769",
+    "steered": "1",
+    "light": "0"
+  }
+}
