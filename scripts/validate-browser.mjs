@@ -84,6 +84,10 @@ const server = createServer(async (req, res) => {
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const base = `http://127.0.0.1:${server.address().port}/preview/`;
 await mkdir("test/scratch/interactions", { recursive: true });
+// Optional: CHROMIUM_PATH points at a locally installed Chromium build.
+const chromiumPath = process.env.CHROMIUM_PATH
+  ? { executablePath: process.env.CHROMIUM_PATH }
+  : {};
 const report = { engines: [], results: [], limitations: [] };
 async function fixtures(context, options = {}) {
   const mode = {
@@ -91,20 +95,28 @@ async function fixtures(context, options = {}) {
     lamp: "IDLE",
     paused: false,
     down: false,
+    rpcDown: false,
+    stateDelay: 0,
+    seedFrontier: null,
     disagree: false,
     ...options,
   };
   await context.route(
     /https:\/\/(ethereum-sepolia-rpc\.publicnode\.com|1rpc\.io|sepolia\.gateway\.tenderly\.co|0xrpc\.io)/,
     async (route) => {
-      if (mode.down) return route.abort();
+      if (mode.down || mode.rpcDown) return route.abort();
       const req = route.request().postDataJSON();
       let result;
       if (req.method === "eth_chainId") result = "0xaa36a7";
       else if (req.method === "eth_call") {
         const d = req.params[0].data;
-        if (d === "0xc19d93fb") result = stateRaw(mode.frontier, mode.paused);
-        else if (d === "0x6c70bee9") result = seed.rawConfiguration;
+        if (d === "0xc19d93fb") {
+          const frontier = mode.frontier,
+            paused = mode.paused;
+          if (mode.stateDelay)
+            await new Promise((r) => setTimeout(r, mode.stateDelay));
+          result = stateRaw(frontier, paused);
+        } else if (d === "0x6c70bee9") result = seed.rawConfiguration;
         else if (d.startsWith("0xc8b9e08f")) {
           const after = BigInt("0x" + d.slice(10, 74)),
             through = BigInt("0x" + d.slice(74, 138));
@@ -115,6 +127,13 @@ async function fixtures(context, options = {}) {
       return route.fulfill({ json: { jsonrpc: "2.0", id: req.id, result } });
     },
   );
+  await context.route(/certified-history\.json$/, async (route) => {
+    if (mode.seedFrontier === null) return route.continue();
+    // An older cached snapshot: same certified pages, earlier recorded frontier.
+    return route.fulfill({
+      json: { ...seed, rawState: stateRaw(mode.seedFrontier) },
+    });
+  });
   await context.route("https://api.squeekchain.com/**", async (route) => {
     const url = route.request().url();
     if (mode.down) return route.fulfill({ json: { status: "unavailable" } });
@@ -164,7 +183,10 @@ try {
       ]) {
     let browser;
     try {
-      browser = await engine.launch({ headless: true });
+      browser = await engine.launch({
+        headless: true,
+        ...(name === "Chromium" ? chromiumPath : {}),
+      });
     } catch (e) {
       report.limitations.push(
         `${name} could not launch: ${String(e).split("\n")[0]}`,
@@ -342,7 +364,7 @@ try {
   }
   console.log("Starting live transitions");
   // Live transitions use the genuine 1212 checkpoint, moving the test frontier from 1211 to 1212.
-  const browser = await chromium.launch({ headless: true }),
+  const browser = await chromium.launch({ headless: true, ...chromiumPath }),
     ctx = await browser.newContext({ viewport: { width: 390, height: 844 } }),
     mode = await fixtures(ctx, { frontier: 1211n, lamp: "SPINNING" }),
     p = await ctx.newPage();
@@ -404,6 +426,181 @@ try {
     "Chromium: legal live lighting, zero-blow quench prevention, official 1212 auto strike, unknown cover, spinning resume, paused cover, IDLE death and as-is quench passed.",
   );
   await ctx.close();
+
+  // Regression scenarios for the revision findings.
+  const phaseText = (pg) => pg.locator(".secondary-actions .small").innerText();
+  const blowsText = (pg) => pg.locator(".piece-progress strong").innerText();
+  const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+  {
+    // Finding: a historical piece can be quenched after one official blow.
+    const c = await browser.newContext({
+      viewport: { width: 390, height: 844 },
+    });
+    await fixtures(c);
+    const pg = await c.newPage();
+    await pg.goto(base);
+    await pg
+      .getByRole("button", { name: "Forge historical piece", exact: true })
+      .click();
+    assert.equal(
+      await pg
+        .getByRole("button", { name: "Quench to shelf", exact: true })
+        .count(),
+      0,
+      "zero-blow historical fire offers no quench",
+    );
+    await pg
+      .getByRole("button", { name: "Strike round 1198", exact: true })
+      .click();
+    await pg
+      .getByRole("button", { name: "Strike round 1199", exact: true })
+      .waitFor();
+    await pg
+      .getByRole("button", { name: "Quench to shelf", exact: true })
+      .click();
+    await pg.locator("#piece-title").waitFor();
+    const body = await pg.locator("dialog").innerText();
+    assert.match(body, /1198/);
+    assert.doesNotMatch(body, /1199/);
+    await pg.screenshot({
+      path: "test/scratch/interactions/one-blow-quench-390.png",
+    });
+    report.results.push(
+      "Chromium: a historical fire quenches to the shelf after one official blow (round 1198) while Strike round 1199 stays available; zero blows offer no quench.",
+    );
+    await c.close();
+  }
+  {
+    // Finding: rounds certified while covered never strike after the lamp returns.
+    const c = await browser.newContext({
+      viewport: { width: 390, height: 844 },
+    });
+    const m = await fixtures(c, { frontier: 1211n, lamp: "SPINNING" });
+    const pg = await c.newPage();
+    await pg.goto(base);
+    await pg.waitForFunction(
+      () => !document.querySelector(".secondary-actions button").disabled,
+    );
+    await pg
+      .getByRole("button", { name: "Light live fire", exact: false })
+      .click();
+    await pg.getByText("Awaiting an official blow", { exact: true }).waitFor();
+    m.lamp = "unknown";
+    await pg.getByRole("button", { name: "Refresh official data" }).click();
+    await pg.getByText("The fire is covered.", { exact: true }).waitFor();
+    m.frontier = 1212n;
+    await pg.getByRole("button", { name: "Refresh official data" }).click();
+    await pause(1500);
+    assert.equal(await blowsText(pg), "0");
+    m.lamp = "SPINNING";
+    m.stateDelay = 2200;
+    await pg.getByRole("button", { name: "Refresh official data" }).click();
+    await pause(1400);
+    assert.equal(
+      await phaseText(pg),
+      "covered",
+      "status alone does not resume",
+    );
+    await pg.waitForFunction(
+      () =>
+        document.querySelector(".secondary-actions .small")?.textContent ===
+        "burning",
+      null,
+      { timeout: 15000 },
+    );
+    await pause(3000);
+    assert.equal(await blowsText(pg), "0", "covered round 1212 never strikes");
+    m.stateDelay = 0;
+    report.results.push(
+      "Chromium: a live fire covered by an unavailable lamp while 1212 was certified resumes only after a fresh state read, with 0 blows (1212 not awarded); a delayed state() keeps it covered.",
+    );
+    await c.close();
+  }
+  {
+    // Finding: an RPC failure never resurrects a fire killed by IDLE.
+    const c = await browser.newContext({
+      viewport: { width: 390, height: 844 },
+    });
+    const m = await fixtures(c, { frontier: 1211n, lamp: "SPINNING" });
+    const pg = await c.newPage();
+    await pg.goto(base);
+    await pg.waitForFunction(
+      () => !document.querySelector(".secondary-actions button").disabled,
+    );
+    await pg
+      .getByRole("button", { name: "Light live fire", exact: false })
+      .click();
+    await pg.getByText("Awaiting an official blow", { exact: true }).waitFor();
+    m.lamp = "IDLE";
+    await pg.getByRole("button", { name: "Refresh official data" }).click();
+    await pg.getByText("The live fire has died.", { exact: true }).waitFor();
+    m.rpcDown = true;
+    await pg.getByRole("button", { name: "Refresh official data" }).click();
+    await pause(2500);
+    assert.equal(await phaseText(pg), "dead");
+    m.rpcDown = false;
+    m.lamp = "SPINNING";
+    await pg.getByRole("button", { name: "Refresh official data" }).click();
+    await pause(2500);
+    assert.equal(await phaseText(pg), "dead");
+    m.frontier = 1212n;
+    await pg.getByRole("button", { name: "Refresh official data" }).click();
+    await pause(2500);
+    assert.equal(await phaseText(pg), "dead");
+    assert.equal(await blowsText(pg), "0");
+    await pg.getByRole("button", { name: "Abandon fire", exact: true }).click();
+    await pg
+      .getByRole("button", { name: "Light live fire", exact: false })
+      .waitFor();
+    report.results.push(
+      "Chromium: a fire killed by IDLE stays dead with 0 blows through an RPC failure, a spinning lamp and a new certified round 1212; only Abandon frees the bench for a new lighting.",
+    );
+    await c.close();
+  }
+  {
+    // Finding: a valid shared piece opens once the current frontier arrives.
+    const c = await browser.newContext({
+      viewport: { width: 390, height: 844 },
+    });
+    await fixtures(c, {
+      frontier: 1212n,
+      seedFrontier: 1211n,
+      stateDelay: 2200,
+    });
+    const pg = await c.newPage();
+    await pg.goto(
+      base + "#piece=v1,11155111," + seed.proxy + ",historical,1212",
+    );
+    await pg
+      .locator("#piece-title")
+      .filter({ hasText: "deb98f44" })
+      .waitFor({ timeout: 15000 });
+    assert.match(await pg.locator("dialog").innerText(), /80/);
+    await c.close();
+    const c2 = await browser.newContext({
+      viewport: { width: 390, height: 844 },
+    });
+    const m2 = await fixtures(c2, { rpcDown: true });
+    const pg2 = await c2.newPage();
+    await pg2.goto(
+      base + "#piece=v1,11155111," + seed.proxy + ",historical,1198",
+    );
+    await pg2
+      .getByRole("button", { name: "Forge historical piece", exact: true })
+      .waitFor();
+    await pause(2500);
+    assert.equal(await pg2.locator("#piece-title").isVisible(), false);
+    m2.rpcDown = false;
+    await pg2.getByRole("button", { name: "Refresh official data" }).click();
+    await pg2
+      .locator("#piece-title")
+      .filter({ hasText: "ab8a1708" })
+      .waitFor({ timeout: 15000 });
+    report.results.push(
+      "Chromium: a shared historical,1212 link opens (Heart deb98f44) after a delayed current state() overtakes a cached 1211 frontier; a historical,1198 link opened during an RPC outage opens (Heart ab8a1708) after Refresh official data, without reload or /v1/settlements.",
+    );
+    await c2.close();
+  }
   const failure = await browser.newContext({
     viewport: { width: 390, height: 844 },
   });

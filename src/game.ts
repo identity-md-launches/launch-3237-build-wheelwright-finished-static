@@ -86,6 +86,8 @@ export function acceptLive(
 }
 /** Cover gaps are deliberately skipped; they never become retroactive live blows. */
 export function resumeLive(fire: Fire, status: Status, core: CoreState): Fire {
+  // IDLE ends a fire for good: it can only be quenched as-is or abandoned.
+  if (fire.mode !== "live" || fire.phase === "dead") return fire;
   const phase = livePhase(fire, status, core);
   if (fire.phase === "covered" && phase === "burning")
     return { ...fire, phase, scannedFrontier: core.frontier.toString() };

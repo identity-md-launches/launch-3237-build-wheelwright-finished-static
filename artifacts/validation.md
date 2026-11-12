@@ -71,7 +71,7 @@ The browser harness initially had a locator that searched exact text on a lamp c
 | --- | --- |
 | `npm install` | Completed; source manifest and lockfile retained, generated dependencies excluded. |
 | `npm run typecheck` | Passed (`tsc --noEmit`). Also runs as part of every production build. |
-| `npm test` | Passed: 4 formula and 13 protocol/game tests; **17 total**, no failures/skips. Final test rerun followed the cache-key scope correction. |
+| `npm test` | Passed: 4 formula and 14 protocol/game tests; **18 total**, no failures/skips. Revision added a dead-fire `resumeLive` test. |
 | `npm run build` | Passed after final source change. Vite exported relative URLs; main JS ~237kB before gzip, CSS ~19.5kB; fonts stay in the local `fonts/` path. |
 | `node --import tsx scripts/capture.ts` | Actual public Sepolia `eth_call` reads: configuration, state, two historical pages and single 1212 page. Frontier 1248, 23 active records; raw results in delivered certified cache. |
 | `npm run recompute -- 1212` and `-- --snapshot 1212` | Both returned Mass 80, Heart deb98f44, Temper 1 steered / 0 light, Grain 9769. The offline path reuses actual certified cached pages. |
@@ -96,3 +96,19 @@ The browser validation script owns a temporary static server under `/preview/` a
 - `bundle-budget.json`: final tracked-candidate/export byte budget, excluding scratch and dependencies.
 
 Completion: **the usable game, production export and requested documentation are delivered and locally checked; exact official-ramp equivalence and full published-ABI byte parity remain unverified source limitations.** Public hosting/repository publication is after review. No full accessibility, Safari or independent verifier behavioral pass is asserted.
+
+## Revision: reviewer findings (2026-11-12)
+
+Each finding was reproduced first. The four behavioural scenarios were added to `scripts/validate-browser.mjs` and run against a build of the **pre-revision** source (with only the stale-close fix below applied); all four failed there, and all four pass on the revised source.
+
+| Finding | Reproduced on old build | Cause and fix |
+| --- | --- | --- |
+| Historical piece cannot be quenched after one blow | Yes: no Quench control after striking 1198 (click timed out). | `src/useWorkshop.ts` `quench()` refused 1–7 historical blows. Now any fire with ≥1 blow quenches; `src/App.tsx` shows **Quench to shelf** beside the next strike and **Abandon fire**. Zero blows still cannot quench. |
+| Status refresh awards rounds certified while covered | Yes: phase read `burning` 1.4 s after the lamp returned, before the delayed `state()`. | The 650 ms guard resumed covered fires. It may now only cover or kill. A covered fire resumes only in `sync()` through `resumeLive()`, from a `state()` read that began after the spinning lamp was observed (re-read if the lamp arrived later). Round 1212, certified while covered, stays unawarded (0 blows). |
+| RPC failure resurrects a fire killed by IDLE | Yes: dead fire turned covered, then burning. | The failed-read and hidden-tab paths now cover only a **burning** fire; `resumeLive()` returns a dead fire unchanged. The fire stays dead with 0 blows until abandoned; a new lighting then records a new frontier. |
+| Valid shared pieces stay rejected | Yes: the 1212 link stayed rejected after the 1212 frontier arrived; the 1198 link never opened after Refresh. | A hash is marked done only after it opens or is definitively invalid (malformed, or a certified rest). Beyond-frontier is not final: it retries when the frontier changes. Failed reads retry on the next successful contract read or **Refresh official data**. |
+| LED preview not nearest-neighbour | Yes: 1048 of 2304 aligned 16×16 blocks held several colours (8-bit palette with dithering). | Regenerated: 64×36 area-sampled grid first, then ×16 nearest-neighbour, 24-bit RGB, no dithering. 0 non-uniform blocks. Public, `dist/` and `artifacts/` copies replaced; inspected and still readable (centred anvil and workpiece, ember fire, bench). |
+
+The browser run found one more defect while testing the shared-link fix, and it also fails on the old code. When a piece dialog is closed and another piece opens right away, Chrome fires the earlier `close` event late, and that event dismissed the new dialog. `onClose` in `src/App.tsx` now clears the piece only when the dialog is actually closed.
+
+Revision commands: `npm test` (18 passed), `npm run typecheck` (passed), `npm run build` (passed), `CHROMIUM_PATH=<local headless Chromium> node scripts/validate-browser.mjs` (Chromium passed every scenario; WebKit could not launch here: missing browser build), pinned `taste.mjs --out test/scratch/taste` (**16/16 passed**, 390 first screen viewed: bench and **Forge historical piece** visible), `npm run check:export` (passed). The one-blow bench state was screenshotted at 390. Both secondary buttons measured 44 px and the page had no horizontal overflow. The Better Interface review of the new control: it reuses the existing `.quiet` secondary style and verb-first copy, keeps a single primary action, and needs no new tokens.

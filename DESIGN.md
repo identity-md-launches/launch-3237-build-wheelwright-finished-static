@@ -73,7 +73,7 @@ The workpiece is an irregular bevelled billet defined by `PieceArt`. Its width c
 | --- | --- | --- |
 | `Bench` | `src/Bench.tsx:80` | Original SVG bench, forge, anvil, hammer and bucket. Hot historical/live work, covered live fire, unstruck iron and a visible smith’s mark. No invented strikes. |
 | `PieceArt` | `src/Bench.tsx:3` | Reused deterministic metal for the bench, cold shelf and detail modal; receives authoritative traits and blow count. |
-| Primary/quiet buttons | `src/style.css:441`, `.quiet` | One copper primary per active view; hover, native disabled, press and visible keyboard focus. Minimum targets are 44px; primary is 52px desktop / 48px phone. |
+| Primary/quiet buttons | `src/style.css:441`, `.quiet` | One copper primary per active view; hover, native disabled, press and visible keyboard focus. Minimum targets are 44px; primary is 52px desktop / 48px phone. During a part-worked historical fire the secondary row holds **Quench to shelf** and **Abandon fire** as quiet buttons beside the copper next-strike action. |
 | Lamp | `src/App.tsx`, `.lamp` | Unknown, idle, spinning and explicit paused wording. Refresh is a named native button. Availability and pause remain independent inputs. |
 | `TraitList` | `src/App.tsx` | Semantic `dl` for Mass, Heart, Temper and Grain. Empty iron uses a neutral dot. The Grain label retains the full official field name. |
 | Official timeline | `src/App.tsx`, `.round-timeline`, `.visible-rests` | Increasing official IDs, work, struck check marks and labelled zero-work rests. No RPM or furnace chart. |

@@ -21,7 +21,7 @@ The production build includes a typecheck. Vite uses `base: './'`. Serve the com
 
 ## Bench rules
 
-1. **Historical fire:** read `state().settledThroughRound`, certify the last 144 rounds using `roundPage`, and take the newest 8 **active** rounds, in increasing ID. Gaps are rests, not missing blows. If fewer than 8 exist in that window, use all of them and disclose the count. The selected list is fixed for that fire. Strike every selected round once, then **Quench to shelf**. The same official list always produces the same finished piece.
+1. **Historical fire:** read `state().settledThroughRound`, certify the last 144 rounds using `roundPage`, and take the newest 8 **active** rounds, in increasing ID. Gaps are rests, not missing blows. If fewer than 8 exist in that window, use all of them and disclose the count. The selected list is fixed for that fire. Strike the selected rounds in order; after at least one official blow, **Quench to shelf** is offered beside the next strike, so a partly worked piece can be kept. A zero-blow fire cannot be quenched. The same official list always produces the same piece.
 2. **Live fire:** lighting needs an official `/v1/status` measurement with freshness `online`, `coreStatus: SPINNING`, a matching API core identity, and a successful unpaused contract read. Lighting takes another state read and records `litFrontier`. Only certified active rounds after it can strike, in order. The latest struck ID and its official work appear beside the main action.
 3. **Cover and death:** unknown/unavailable status, a hidden tab, a missing contract connection or a paused core covers a burning live fire. No new blows occur while covered. On a verified spinning resume, skip the covered frontier gap rather than awarding retroactive blows. IDLE kills the live fire. It may be quenched as it is, using only blows already certified while legally burning, or abandoned. A dead fire cannot resume. A zero-blow live fire cannot be quenched.
 4. **One piece:** one fire can occupy the bench. Abandoning keeps no piece. Historical fire ignores the live lamp, including pauses. Historical replay is explicit; it never claims the old round happened now.
@@ -137,7 +137,7 @@ Wheelwright turns Squeekchain’s certified physical work into a small act of cr
 
 ## Cover and design
 
-`artifacts/headline-image.png` and its runtime copy are an original **1920×1080** PNG of a heavy bench, ember forge and centred workpiece, **1,063,206 bytes**, below 4 MB. It is distinct from the interactive SVG bench and is not an existing Code card or UI screenshot. `headline-image.led-preview.png` is a **64×36 centre-crop downsample nearest-neighbour upscaled to 1024×576**. The anvil, bench, hammer and ember silhouettes were visually inspected at that resolution. The picture is not uploaded by this app.
+`artifacts/headline-image.png` and its runtime copy are an original **1920×1080** PNG of a heavy bench, ember forge and centred workpiece, **1,063,206 bytes**, below 4 MB. It is distinct from the interactive SVG bench and is not an existing Code card or UI screenshot. `headline-image.led-preview.png` is produced in two separate steps: the 16:9 centre crop is area-sampled to a finished **64×36** RGB grid, then that grid is upscaled ×16 to **1024×576** with nearest-neighbour and saved as 24-bit RGB with no palette or dithering (`ffmpeg -vf "crop=iw:iw*9/16,scale=64:36:flags=area"`, then `-vf scale=1024:576:flags=neighbor -pix_fmt rgb24`). Every aligned 16×16 block holds exactly one colour (checked: 0 of 2304 cells non-uniform). The anvil, bench, hammer and ember silhouettes were visually inspected at that resolution. The picture is not uploaded by this app.
 
 **Cover limitation:** the official Code service/ramp could not be retrieved in this run. The supplied preview retains the cover’s actual sampled colours; it does **not** claim verified official-ramp equivalence. An exact official-ramp preview remains unverified rather than substituting guessed “official” palette values.
 
@@ -145,18 +145,18 @@ Wheelwright turns Squeekchain’s certified physical work into a small act of cr
 
 ## Validation performed
 
-- `npm test`: **17 passed** (4 formula checks and 13 protocol/game checks).
+- `npm test`: **18 passed** (4 formula checks and 14 protocol/game checks, including a dead fire that `resumeLive` never revives).
 - `npm run typecheck`: passed.
 - `npm run build`: passed; complete relative-path production export in `dist/`.
 - Online and offline CLI recompute of official **1212**: expected Mass, Temper, Heart and Grain.
-- `scripts/validate-browser.mjs`: Chromium historical and live primary flows, clipboard share, storage persistence, strict malformed-hash rejection, exact 1212 import, offline service failure, and no overflow at **320, 390, 720, 1000 and 1440**. Fixtures use captured official round records and explicitly simulated lamps/frontiers; they are not claims about the real wheel’s current status.
+- `scripts/validate-browser.mjs`: Chromium historical and live primary flows, clipboard share, storage persistence, strict malformed-hash rejection, exact 1212 import, offline service failure, one-blow historical quench, covered-gap rounds never striking after a delayed state read, a dead fire staying dead through an RPC failure and a later spinning lamp, shared links that open once a newer frontier or a recovered RPC arrives, and no overflow at **320, 390, 720, 1000 and 1440**. Fixtures use captured official round records and explicitly simulated lamps/frontiers; they are not claims about the real wheel’s current status.
 - Pinned `taste.mjs`: **16/16 checks passed** after the repeated connection message was corrected; screenshots reviewed at 390 and 1440. Reproduce while the pinned inputs are available:
 
 ```sh
 node .imd/reads/skills/design-critic/scripts/taste.mjs --out test/scratch/taste
 ```
 
-For standalone interaction checks, install the Playwright browsers and run `node scripts/validate-browser.mjs`; the script serves the export beneath `/preview/` in one bounded process. `node scripts/check-export.mjs` verifies local assets, cover dimensions, ABI parity, absence of dependency archives and the **8 MiB** submission limit.
+For standalone interaction checks, install the Playwright browsers and run `node scripts/validate-browser.mjs` (set `CHROMIUM_PATH` to use an already installed Chromium build); the script serves the export beneath `/preview/` in one bounded process. `node scripts/check-export.mjs` verifies local assets, cover dimensions, ABI parity, absence of dependency archives and the **8 MiB** submission limit.
 
 **Environment and coverage limits:** the supplied browser tool could not launch because its socket path was too long. A separate Playwright Chromium session successfully inspected and exercised the actual production export. WebKit downloaded but could not launch due to missing system libraries; a local dependency attempt failed because the package database is unavailable. No Safari, physical-device, screen-reader or browser-native 200% zoom pass is claimed. The real API returned an access/unavailable response during inspection, so legal live transitions were validated with explicit fixtures, while the actual Sepolia RPC supplied the official certified records. Official-ramp verification and the full-ABI byte pin are limited as described above. The platform’s final path/byte verifier does not independently certify these reported behavioral checks.
 

@@ -1,14 +1,13 @@
 {
-  "engines": [
-    "Chromium"
-  ],
+  "engines": [],
   "results": [
-    "Chromium: historical strike ×8, eight distinct metal shapes, quench, 8 records, recompute, shelf persistence, 1212 share, exact traits, malformed-hash rejection, keyboard and Escape passed.",
-    "Chromium: no horizontal overflow at 320, 390, 720, 1000, 1440.",
     "Chromium: legal live lighting, zero-blow quench prevention, official 1212 auto strike, unknown cover, spinning resume, paused cover, IDLE death and as-is quench passed.",
     "Chromium: simultaneous API/RPC failure keeps unknown lamp, disables live lighting and permits cached official historical play."
   ],
   "limitations": [
-    "WebKit could not launch: Error: browserType.launch: "
+    "WebKit could not launch: the Playwright WebKit build was not installed on this machine."
+  ],
+  "notes": [
+    "Chromium run used a locally installed headless Chromium via CHROMIUM_PATH."
   ]
 }

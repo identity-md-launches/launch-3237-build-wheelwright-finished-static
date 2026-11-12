@@ -93,6 +93,7 @@ export function useWorkshop() {
     lock.current = true;
     setBusy(true);
     try {
+      const stateStarted = Date.now();
       const [s, a] = await Promise.allSettled([
         (async () => {
           if (!initialized.current) {
@@ -130,30 +131,51 @@ export function useWorkshop() {
       if (c) {
         const existing = fireRef.current;
         if (existing?.mode === "live") {
-          let next = resumeLive(existing, st, c);
-          setFire(next);
+          let fresh: CoreState | null = c;
           if (
-            next.phase === "burning" &&
-            mayBurn(st, c) &&
-            c.frontier > BigInt(next.scannedFrontier!)
+            existing.phase === "covered" &&
+            livePhase(existing, st, c) === "burning" &&
+            st.checkedAt > stateStarted
           ) {
-            const span = await reader.current.span(
-              BigInt(next.scannedFrontier!),
-              c.frontier,
-              c.frontier,
-            );
+            // The spinning lamp arrived after this state read began, so rounds
+            // certified in between belong to the covered gap. Resume only from a
+            // state read that starts after the lamp was verified.
+            try {
+              fresh = await reader.current.state();
+              coreRef.current = fresh;
+              setCore(fresh);
+            } catch {
+              fresh = null;
+            }
+          }
+          if (!fresh || fireRef.current !== existing) {
+            /* stay covered; the next successful read may resume */
+          } else {
+            let next = resumeLive(existing, statusRef.current, fresh);
+            setFire(next);
             if (
-              fireRef.current === next &&
-              mayBurn(statusRef.current, coreRef.current)
+              next.phase === "burning" &&
+              mayBurn(statusRef.current, fresh) &&
+              fresh.frontier > BigInt(next.scannedFrontier!)
             ) {
-              next = acceptLive(
-                next,
-                span.blows,
-                span.through,
-                statusRef.current,
-                coreRef.current,
+              const span = await reader.current.span(
+                BigInt(next.scannedFrontier!),
+                fresh.frontier,
+                fresh.frontier,
               );
-              setFire(next);
+              if (
+                fireRef.current === next &&
+                mayBurn(statusRef.current, coreRef.current)
+              ) {
+                next = acceptLive(
+                  next,
+                  span.blows,
+                  span.through,
+                  statusRef.current,
+                  coreRef.current,
+                );
+                setFire(next);
+              }
             }
           }
         } else if (existing?.mode === "historical") {
@@ -167,7 +189,11 @@ export function useWorkshop() {
             rests: restRanges(h.after, h.through, h.blows),
             cached: false,
           });
-      } else if (fireRef.current?.mode === "live")
+      } else if (
+        fireRef.current?.mode === "live" &&
+        fireRef.current.phase === "burning"
+      )
+        // A failed read covers a burning fire; a dead fire stays dead.
         setFire({ ...fireRef.current, phase: "covered" });
     } catch (e) {
       setError(
@@ -243,8 +269,11 @@ export function useWorkshop() {
       const f = fireRef.current;
       if (f?.mode !== "live") return;
       const phase = livePhase(f, statusRef.current, coreRef.current);
-      if (phase !== f.phase) setFire({ ...f, phase });
-      else if (
+      // The guard may only cover or kill a fire. Resuming a covered fire happens
+      // in sync(), through resumeLive(), after a fresh state read.
+      if (phase !== f.phase) {
+        if (phase !== "burning") setFire({ ...f, phase });
+      } else if (
         phase === "burning" &&
         f.blows.length < f.available.length &&
         mayBurn(statusRef.current, coreRef.current)
@@ -255,7 +284,11 @@ export function useWorkshop() {
       }
     }, 650);
     const visibility = () => {
-      if (document.hidden && fireRef.current?.mode === "live")
+      if (
+        document.hidden &&
+        fireRef.current?.mode === "live" &&
+        fireRef.current.phase === "burning"
+      )
         setFire({ ...fireRef.current, phase: "covered" });
       else if (!document.hidden) void sync();
     };
@@ -330,11 +363,8 @@ export function useWorkshop() {
   }
   async function quench() {
     const f = fireRef.current;
-    if (
-      !f?.blows.length ||
-      (f.mode === "historical" && f.blows.length < f.available.length)
-    )
-      return null;
+    // Any fire with at least one official blow may be quenched; zero blows never can.
+    if (!f?.blows.length) return null;
     const piece: Piece = {
       mode: f.mode,
       blows: [...f.blows],

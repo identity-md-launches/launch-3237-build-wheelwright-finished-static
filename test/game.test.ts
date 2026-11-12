@@ -106,3 +106,9 @@ test("omitted rounds in a certified span are zero-work rests, including tail res
   ]);
   assert.deepEqual(restRanges(1212n, 1248n, []), [["1213", "1248"]]);
 });
+test("a fire killed by IDLE stays dead: resumeLive never revives it or moves its frontiers", () => {
+  const dead = { ...fire(), phase: "dead" as const, endFrontier: "1211" };
+  const n = resumeLive(dead, st("spinning"), { ...core, frontier: 1248n });
+  assert.equal(n, dead);
+  assert.equal(livePhase(dead, st("spinning"), core), "dead");
+});

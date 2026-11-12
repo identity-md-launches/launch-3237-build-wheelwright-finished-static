@@ -37,7 +37,11 @@ export default function App() {
   const [sharing, setSharing] = useState("");
   const dialog = useRef<HTMLDialogElement>(null),
     previousFocus = useRef<HTMLElement | null>(null);
-  const imported = useRef("");
+  // Hashes that opened, or were definitively rejected (malformed link or a certified rest).
+  const imported = useRef(new Set<string>());
+  // A hash being resolved right now, and the frontier at which a hash was last found to be beyond it.
+  const pendingHash = useRef("");
+  const beyondAt = useRef(new Map<string, string>());
   const [txs, setTxs] = useState<string[] | null>(null);
   const [txBusy, setTxBusy] = useState(false);
   const count = w.fire?.blows.length ?? 0;
@@ -71,33 +75,64 @@ export default function App() {
   useEffect(() => {
     const read = async () => {
       const hash = window.location.hash;
-      if (!hash || hash === imported.current) return;
-      imported.current = hash;
+      if (!hash || imported.current.has(hash) || pendingHash.current === hash)
+        return;
+      let request;
       try {
-        const request = parseShare(hash);
-        if (!request) return;
-        const frontier =
-          w.core?.frontier ?? (w.history ? BigInt(w.history.frontier) : null);
-        if (frontier === null) {
-          imported.current = "";
-          return;
-        }
+        request = parseShare(hash);
+      } catch (e) {
+        imported.current.add(hash);
+        w.setNotice(e instanceof Error ? e.message : "Invalid piece link.");
+        return;
+      }
+      if (!request) return;
+      const current = w.core?.frontier ?? null;
+      const frontier =
+        current ?? (w.history ? BigInt(w.history.frontier) : null);
+      if (frontier === null) return;
+      const highest = BigInt(request.ids.at(-1)!);
+      if (highest > frontier) {
+        if (beyondAt.current.get(hash) === frontier.toString()) return;
+        beyondAt.current.set(hash, frontier.toString());
+        // Not final: a cached or older frontier can be overtaken. Retry when it advances.
+        w.setNotice(
+          current === null
+            ? `Round ${highest} is newer than the cached certified frontier ${frontier}. Waiting for SqueekCore to verify it.`
+            : `Round ${highest} is beyond the certified frontier ${frontier}. It will open once SqueekCore certifies it.`,
+        );
+        return;
+      }
+      pendingHash.current = hash;
+      try {
         w.setNotice("Verifying the shared official blows…");
         const blows = await w.reader.resolve(request.ids, frontier);
-        setOpened({ mode: request.mode, blows, traits: await traits(blows) });
+        const t = await traits(blows);
+        imported.current.add(hash);
+        if (window.location.hash !== hash) return;
+        setOpened({ mode: request.mode, blows, traits: t });
         setRecompute(
           "Shared official rounds verified. Live frontiers are not encoded in a piece link.",
         );
         setSharing("");
         w.setNotice("Shared piece opened. Every blow is certified.");
       } catch (e) {
-        w.setNotice(e instanceof Error ? e.message : "Invalid piece link.");
+        const message = e instanceof Error ? e.message : "";
+        if (message.includes("certified rest")) {
+          imported.current.add(hash);
+          w.setNotice(message);
+        } else
+          // A failed read is retried on the next successful contract read or Refresh.
+          w.setNotice(
+            "Could not read the shared official rounds. Refresh official data to retry.",
+          );
+      } finally {
+        if (pendingHash.current === hash) pendingHash.current = "";
       }
     };
     void read();
     window.addEventListener("hashchange", read);
     return () => window.removeEventListener("hashchange", read);
-  }, [w.core?.frontier, w.history?.frontier]);
+  }, [w.core, w.history?.frontier]);
   const copy = async (text: string) => {
     try {
       try {
@@ -334,7 +369,7 @@ export default function App() {
                 <p className="fire-description">
                   {w.fire?.mode === "live"
                     ? `Lit after frontier ${w.fire.litFrontier}. ${w.fire.phase === "covered" ? "No new blows until the wheel is verified online, spinning and unpaused." : w.fire.phase === "dead" ? "Quench the blows already struck, or abandon this fire." : "New certified active rounds strike automatically."}`
-                    : "Take official rounds to the anvil. Strike each one, then quench the finished piece."}
+                    : "Take official rounds to the anvil. Strike in order; quench after any blow to keep the piece."}
                 </p>
                 <div className="piece-progress">
                   <span>
@@ -392,9 +427,16 @@ export default function App() {
                 </div>
                 <div className="secondary-actions">
                   {w.fire ? (
-                    <button className="quiet" onClick={w.abandon}>
-                      Abandon fire
-                    </button>
+                    <>
+                      {w.fire.mode === "historical" && count > 0 && !full ? (
+                        <button className="quiet" onClick={() => void quench()}>
+                          Quench to shelf
+                        </button>
+                      ) : null}
+                      <button className="quiet" onClick={w.abandon}>
+                        Abandon fire
+                      </button>
+                    </>
                   ) : (
                     <button
                       className="quiet"
@@ -806,7 +848,11 @@ export default function App() {
         ref={dialog}
         className="piece-dialog"
         onCancel={() => setOpened(null)}
-        onClose={() => setOpened(null)}
+        onClose={(e) => {
+          // A close event is dispatched asynchronously; a stale one from the previous
+          // piece must not dismiss a piece that has since been opened.
+          if (!e.currentTarget.open) setOpened(null);
+        }}
         aria-labelledby="piece-title"
       >
         {opened && (
